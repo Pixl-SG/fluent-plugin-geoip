@@ -77,6 +77,10 @@ Note that filter version of geoip plugin does not have handling tag feature.
   # geoip_database    "/path/to/your/GeoIPCity.dat"
   # Specify optional geoip2 database
   # geoip2_database   "/path/to/your/GeoLite2-City.mmdb" (using bundled GeoLite2-City.mmdb by default)
+  # Specify geoip2 asn database
+  geoip2_asn_database   "/path/to/your/GeoLite2-ASN.mmdb"
+
+  
   # Specify backend library (geoip2_c, geoip, geoip2_compat)
   backend_library geoip2_c
 
@@ -88,6 +92,8 @@ Note that filter version of geoip plugin does not have handling tag feature.
     country         ${country.iso_code["host"]}
     country_name    ${country.names.en["host"]}
     postal_code     ${postal.code["host"]}
+    geo.asn         ${autonomous_system_number["host"]}
+    geo.asn_org     ${autonomous_system_organization["host"]}
   </record>
 
   # To avoid get stacktrace error with `[null, null]` array for elasticsearch.
