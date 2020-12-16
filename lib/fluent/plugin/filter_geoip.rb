@@ -35,6 +35,7 @@ module Fluent::Plugin
 
     config_param :geoip_database, :string, default: File.expand_path('../../../data/GeoLiteCity.dat', __dir__)
     config_param :geoip2_database, :string, default: File.expand_path('../../../data/GeoLite2-City.mmdb', __dir__)
+    config_param :geoip2_asn_database, :string, default: File.expand_path('../../../data/GeoLite2-ASN.mmdb', __dir__)
     config_param :geoip_lookup_keys, :array, value_type: :string, default: ["host"]
     config_param :geoip_lookup_key, :string, default: nil, deprecated: "Use geoip_lookup_keys instead"
     config_param :skip_adding_null_record, :bool, default: false
@@ -58,7 +59,6 @@ module Fluent::Plugin
         end
       end
       @geoip_lookup_accessors = @geoip_lookup_keys.map {|key| [key, record_accessor_create(key)] }.to_h
-
       if conf.keys.any? {|k| k =~ /^enable_key_/ }
         raise Fluent::ConfigError, "geoip: 'enable_key_*' config format is obsoleted. use <record></record> directive instead."
       end
@@ -82,7 +82,6 @@ module Fluent::Plugin
           validate_json.call if json?(v.tr('\'"\\', ''))
         }
       }
-
       @placeholder_keys = @map.values.join.scan(REGEXP_PLACEHOLDER_SCAN).map{|placeholder| placeholder[0] }.uniq
       @placeholder_keys.each do |key|
         m = key.match(REGEXP_PLACEHOLDER_SINGLE)
@@ -99,8 +98,8 @@ module Fluent::Plugin
           # because geoip2_c can fetch any fields in GeoIP2 database.
         end
       end
-
       @geoip = load_database
+      @geoip_asn = load_asn_database
     end
 
     def filter(tag, time, record)
@@ -133,9 +132,27 @@ module Fluent::Plugin
         else
           rewrited = value.gsub(REGEXP_PLACEHOLDER_SCAN, placeholder)
         end
-        record[record_key] = rewrited
+        set_value_by_path(record,record_key,rewrited)
       end
       record
+    end
+
+    def set_value_by_path(record,path,value)
+        keys = path.split('.')
+        last = nil
+        last_key = "" 
+        for key in keys
+            if record[key]
+                last = record
+                record = record[key]
+            else
+                record[key] = {}
+                last = record
+                record = record[key]
+            end
+            last_key = key
+        end
+        last[last_key] = value
     end
 
     def json?(text)
@@ -177,6 +194,11 @@ module Fluent::Plugin
                   else
                     @geoip.lookup(ip)
                   end
+            geo = geo.to_h
+            geo_asn = @geoip_asn.lookup(ip)
+            geo_asn = geo_asn.to_h
+            geo["autonomous_system_number"] = geo_asn["autonomous_system_number"]
+            geo["autonomous_system_organization"] = geo_asn["autonomous_system_organization"]
           end
         end
         geodata[field] = geo
@@ -189,7 +211,7 @@ module Fluent::Plugin
       @placeholder_keys.each do |placeholder_key|
         position = placeholder_key.match(REGEXP_PLACEHOLDER_SINGLE)
         next if position.nil? or geodata[position[:record_key]].nil?
-        keys = [position[:record_key]] + position[:geoip_key].split('.').map(&:to_sym)
+        keys = [position[:record_key]] + position[:geoip_key].split('.').map(&:to_s)
         value = geodata.dig(*keys)
         value = if [:latitude, :longitude].include?(keys.last)
                   value || 0.0
@@ -215,5 +237,12 @@ module Fluent::Plugin
     rescue LoadError
       raise Fluent::ConfigError, "You must install #{@backend_library} gem."
     end
+
+    def load_asn_database
+        require 'geoip2'
+        GeoIP2::Database.new(@geoip2_asn_database)
+      rescue LoadError
+        raise Fluent::ConfigError, "You must install geoip2 gem."
+      end
   end
 end
