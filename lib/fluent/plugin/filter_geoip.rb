@@ -100,9 +100,22 @@ module Fluent::Plugin
       end
       @geoip = load_database
       @geoip_asn = load_asn_database
+      @reload = false
+      Signal.trap("USR1") {
+        puts "receive reload geoip database signal"
+        @reload = true
+      }
     end
 
     def filter(tag, time, record)
+
+      if @reload == true 
+        puts "reload geoip database"
+        @reload = false
+        @geoip = load_database
+        @geoip_asn = load_asn_database
+      end
+
       filtered_record = add_geoip_field(record)
       if filtered_record
         record = filtered_record
