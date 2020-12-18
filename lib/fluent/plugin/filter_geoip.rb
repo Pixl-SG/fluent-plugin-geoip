@@ -132,7 +132,9 @@ module Fluent::Plugin
         else
           rewrited = value.gsub(REGEXP_PLACEHOLDER_SCAN, placeholder)
         end
-        set_value_by_path(record,record_key,rewrited)
+        if rewrited
+          set_value_by_path(record,record_key,rewrited)
+        end
       end
       record
     end
@@ -194,6 +196,7 @@ module Fluent::Plugin
                   else
                     @geoip.lookup(ip)
                   end
+            
             geo = geo.to_h
             geo_asn = @geoip_asn.lookup(ip)
             geo_asn = geo_asn.to_h
@@ -212,6 +215,7 @@ module Fluent::Plugin
         position = placeholder_key.match(REGEXP_PLACEHOLDER_SINGLE)
         next if position.nil? or geodata[position[:record_key]].nil?
         keys = [position[:record_key]] + position[:geoip_key].split('.').map(&:to_s)
+        keys = keys.map { |item| if item =~ /^\d+$/ then item = item.to_i else item end } 
         value = geodata.dig(*keys)
         value = if [:latitude, :longitude].include?(keys.last)
                   value || 0.0
@@ -221,6 +225,15 @@ module Fluent::Plugin
         placeholder[placeholder_key] = value
       end
       placeholder
+    end
+
+    def convert_index(keys)
+      keys.map { |item| 
+          if item =~ /^\d+$/ 
+            item = item.to_i
+          end
+          return item
+        }  
     end
 
     def load_database
